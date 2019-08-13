@@ -153,6 +153,7 @@ class PolicyLearner:
                 memory_pv.append(self.agent.portfolio_value)
                 # 주식 갯수 저장
                 memory_num_stocks.append(self.agent.num_stocks)
+                # 샘플값(입력값), 액션값, 보상값을 튜플로 만들어 저장
                 memory = [(
                     memory_sample[i],
                     memory_action[i],
@@ -160,7 +161,11 @@ class PolicyLearner:
                     for i in list(range(len(memory_action)))[-max_memory:]
                 ]
                 if exploration:
+                    # 탐색 인덱스를 저장한다.
                     memory_exp_idx.append(itr_cnt)
+                    # 액션수만큼 갯수를 가진 리스트를 만들어 붙인다.
+                    # 여기에는 출력계층(매수, 매도)에 대한 확률이 들어간다.
+                    # 그러나 탐색일 때는 그 확률이 없으므로 이용할 수 없음 값으로 채운다.
                     memory_prob.append([np.nan] * Agent.NUM_ACTIONS)
                 else:
                     memory_prob.append(self.policy_network.prob)
@@ -192,7 +197,7 @@ class PolicyLearner:
                             pos_learning_cnt += 1
                         else:
                             neg_learning_cnt += 1
-                        # 정책 신경망 갱신
+                        # 정책 신경망 학습 시킴 - 지연 보상이 발생했을 때만 진행시킨다.
                         loss += self.policy_network.train_on_batch(x, y)
                         memory_learning_idx.append([itr_cnt, delayed_reward])
                     batch_size = 0
@@ -237,13 +242,21 @@ class PolicyLearner:
 
     # 배치 학습 데이터를 가져옴
     def _get_batch(self, memory, batch_size, discount_factor, delayed_reward):
+        # create an ndarray with all zeros
         x = np.zeros((batch_size, 1, self.num_features))
         y = np.full((batch_size, self.agent.NUM_ACTIONS), 0.5)
 
+        # 배열을 역순으로 도는 것은 가장 최근의 것에 가장 많은 점수를 주기 위해서이다.
+        # 과거로 갈 수록 지연보상을 적용할 근거가 떨어지기 때문에 먼 과거의 일일 수록 할인 요인을 적용한다.
         for i, (sample, action, reward) in enumerate(
                 reversed(memory[-batch_size:])):
+            # x[i] 에는 특징값 수만큼 값들이 3차원으로 구성되어 들어갑니다.
             x[i] = np.array(sample).reshape((-1, 1, self.num_features))
+            # y[i, action]에는 액션을 취하면 1.0, 취하지 않았으면 0.5로 들어갑니다.
+            # action 0이면 매수이므로 [1.0, 0.5]라고 들어가게 됩니다.
+            # action 1이면 매도이므로 [0.5, 1.0]라고 들어가게 됩니다.
             y[i, action] = (delayed_reward + 1) / 2
+            # 할인요소를 i승하여 곱해줌.
             if discount_factor > 0:
                 y[i, action] *= discount_factor ** i
         return x, y

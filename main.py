@@ -21,6 +21,7 @@ if __name__ == '__main__':
     logging.basicConfig(format="%(message)s",
                         handlers=[file_handler, stream_handler], level=logging.DEBUG)
 
+    logging.debug('학습 시작')
     # 주식 데이터 준비
     chart_data = data_manager.load_chart_data(
         os.path.join(settings.BASE_DIR,
