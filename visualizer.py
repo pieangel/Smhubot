@@ -81,6 +81,7 @@ class Visualizer:
         # 캔버스 레이아웃 조정
         plt.tight_layout()
         plt.subplots_adjust(top=.9)
+        plt.show()
 
     def clear(self, xlim):
         for ax in self.axes[1:]:

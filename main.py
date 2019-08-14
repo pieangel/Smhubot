@@ -3,10 +3,14 @@ import os
 import settings
 import data_manager
 from policy_learner import PolicyLearner
+from market_manager import SmMarketManager
 
 
 if __name__ == '__main__':
     stock_code = '005930'  # 삼성전자
+
+    market_mgr = SmMarketManager()
+    market_mgr.read_symbol_from_file()
 
     # 로그 기록
     log_dir = os.path.join(settings.BASE_DIR, 'logs/%s' % stock_code)
