@@ -6,7 +6,7 @@ class Agent:
     STATE_DIM = 2  # 주식 보유 비율, 포트폴리오 가치 비율
 
     # 매매 수수료 및 세금
-    TRADING_CHARGE = 0  # 거래 수수료 미고려 (일반적으로 0.015%)
+    TRADING_CHARGE = 4  # 거래 수수료 미고려 (일반적으로 0.015%)
     TRADING_TAX = 0  # 거래세 미고려 (실제 0.3%)
 
     # 행동
@@ -17,7 +17,7 @@ class Agent:
     NUM_ACTIONS = len(ACTIONS)  # 인공 신경망에서 고려할 출력값의 개수
 
     def __init__(
-        self, environment, min_trading_unit=1, max_trading_unit=2, 
+        self, environment, min_trading_unit=1, max_trading_unit=2,
         delayed_reward_threshold=.05):
         # Environment 객체
         self.environment = environment  # 현재 주식 가격을 가져오기 위해 환경 참조
@@ -31,13 +31,21 @@ class Agent:
         # Agent 클래스의 속성
         self.initial_balance = 0  # 초기 자본금
         self.balance = 0  # 현재 현금 잔고
-        self.num_stocks = 0  # 보유 주식 수
-        self.portfolio_value = 0  # balance + num_stocks * {현재 주식 가격}
+        self.num_remain = 0  # 보유 잔고 0 : 잔고 없음, 0보다 작으면 매도 잔고 0보다 크면 매수 잔고
+        # 평가 손익 = 예탁금 + 현재 잔고에 따른 수익
+        self.portfolio_value = 0  # balance + 현재 평가 손익
+        # 바로 직전의 평가 손익
         self.base_portfolio_value = 0  # 직전 학습 시점의 PV
         self.num_buy = 0  # 매수 횟수
         self.num_sell = 0  # 매도 횟수
         self.num_hold = 0  # 홀딩 횟수
         self.immediate_reward = 0  # 즉시 보상
+        # 평가 손익
+        self.open_profit_loss = 0.0
+        # 잔고 평균가
+        self.remain_average_price = 0.0
+        # 제품 승수
+        self.symbol_seunsu = 0.0
 
         # Agent 클래스의 상태
         self.ratio_hold = 0  # 주식 보유 비율
@@ -46,7 +54,7 @@ class Agent:
     # 에이전트 상태 초기화
     def reset(self):
         self.balance = self.initial_balance
-        self.num_stocks = 0
+        self.num_remain = 0
         self.portfolio_value = self.initial_balance
         self.base_portfolio_value = self.initial_balance
         self.num_buy = 0
@@ -62,9 +70,8 @@ class Agent:
 
     # 상태 가져오기
     def get_states(self):
-        # 보유 비율 - 보유한 자산으로 최대한 살 수 있는 최대 갯수와 현재 가지고 있는 갯수의 비율
-        self.ratio_hold = self.num_stocks / int(
-            self.portfolio_value / self.environment.get_price())
+        # 보유 잔고 - 보유 잔고를 참조하여 방향 결정에 활용 한다.
+        self.ratio_hold = self.num_remain
         # 기본 자산(처음 주어진 자산)과 현재 자산의 비율 - 얼마의 수익이 나고 있는지 알 수 있다.
         self.ratio_portfolio_value = self.portfolio_value / self.base_portfolio_value
         return (
@@ -95,13 +102,12 @@ class Agent:
         validity = True
         # 매수일 경우
         if action == Agent.ACTION_BUY:
-            # 적어도 1주를 살 수 있는지 확인
-            if self.balance < self.environment.get_price() * (
-                1 + self.TRADING_CHARGE) * self.min_trading_unit:
+            # 현재 잔고가 매수이고 매수 가능 최대 갯수에 도달했다면 더 이상 매수를 할 수 없다.
+            if self.num_remain > 0 and self.num_remain >= self.max_trading_unit:
                 validity = False
         elif action == Agent.ACTION_SELL:
-            # 주식 잔고가 있는지 확인 
-            if self.num_stocks <= 0:
+            # 현재 잔고가 매도이고 매도 가능 최대 갯수에 도달했다면 더 이상 매도를 할 수 없다.
+            if self.num_remain < 0 and self.num_remain <= -self.max_trading_unit:
                 validity = False
         return validity
 
@@ -129,45 +135,68 @@ class Agent:
 
         # 즉시 보상 초기화
         self.immediate_reward = 0
-
+        # 신뢰도를 가지고 매수할 단위를 판단
+        trading_unit = self.decide_trading_unit(confidence)
         # 매수
         if action == Agent.ACTION_BUY:
-            # 매수할 단위를 판단
-            trading_unit = self.decide_trading_unit(confidence)
-            # 자산에서 살 단위만큼 금액을 뺀다.
-            balance = self.balance - curr_price * (1 + self.TRADING_CHARGE) * trading_unit
-            # 보유 현금이 모자랄 경우 보유 현금으로 가능한 만큼 최대한 매수
-            if balance < 0:
-                trading_unit = max(min(
-                    int(self.balance / (
-                        curr_price * (1 + self.TRADING_CHARGE))), self.max_trading_unit),
-                    self.min_trading_unit
-                )
-            # 수수료를 적용하여 총 매수 금액 산정
-            invest_amount = curr_price * (1 + self.TRADING_CHARGE) * trading_unit
-            self.balance -= invest_amount  # 보유 현금을 갱신
-            self.num_stocks += trading_unit  # 보유 주식 수를 갱신
+            # 잔고가 있다면 일단 실현 손익을 먼저 계산한다.
+            if self.num_remain < 0:
+                # 실현 손익을 계산한다.
+                trading_profit = self.num_remain * (curr_price - self.remain_average_price) * self.symbol_seunsu
+                # 실현 손익을 잔고에 더한다.
+                self.balance += trading_profit
+                # 새로운 잔고를 설정한다.
+                self.num_remain = trading_unit
+                self.remain_average_price = curr_price
+                self.open_profit_loss = 0
+            elif self.num_remain > 0: # 잔고가 매수인 경우
+                # 잔고에 더해 준다.
+                self.num_remain += trading_unit
+                # 평균가를 다시 계산해 준다.
+                self.remain_average_price = (self.num_remain * self.remain_average_price + trading_unit * curr_price)\
+                    / self.num_remain
+                # 평가 손익을 다시 계산해 준다.
+                self.open_profit_loss = self.remain_average_price * (curr_price - self.remain_average_price) \
+                    * self.symbol_seunsu
+            else:
+                self.num_remain = trading_unit
+                self.remain_average_price = curr_price
+                self.open_profit_loss = 0.0
             self.num_buy += 1  # 매수 횟수 증가
 
         # 매도
         elif action == Agent.ACTION_SELL:
-            # 매도할 단위를 판단
-            trading_unit = self.decide_trading_unit(confidence)
-            # 보유 주식이 모자랄 경우 가능한 만큼 최대한 매도
-            trading_unit = min(trading_unit, self.num_stocks)
-            # 매도
-            invest_amount = curr_price * (
-                1 - (self.TRADING_TAX + self.TRADING_CHARGE)) * trading_unit
-            self.num_stocks -= trading_unit  # 보유 주식 수를 갱신
-            self.balance += invest_amount  # 보유 현금을 갱신
+            # 잔고가 있다면 일단 실현 손익을 먼저 계산한다.
+            if self.num_remain > 0:
+                # 실현 손익을 계산한다.
+                trading_profit = self.num_remain * (curr_price - self.remain_average_price) * self.symbol_seunsu
+                # 실현 손익을 잔고에 더한다.
+                self.balance += trading_profit
+                self.num_remain = -1 * trading_unit
+                self.remain_average_price = curr_price
+                self.open_profit_loss = 0.0
+            elif self.num_remain < 0:  # 잔고가 매도인 경우
+                # 잔고에 더해 준다.
+                self.num_remain += -1 * trading_unit
+                # 평균가를 다시 계산해 준다.
+                self.remain_average_price = (self.num_remain * self.remain_average_price + trading_unit * curr_price) \
+                    / self.num_remain
+                # 평가 손익을 다시 계산해 준다.
+                self.open_profit_loss = self.remain_average_price * (curr_price - self.remain_average_price)\
+                    * self.symbol_seunsu
+            else:
+                self.num_remain = -1 * trading_unit
+                self.remain_average_price = curr_price
+                self.open_profit_loss = 0.0
             self.num_sell += 1  # 매도 횟수 증가
-
         # 홀딩
         elif action == Agent.ACTION_HOLD:
             self.num_hold += 1  # 홀딩 횟수 증가
+            # 잔고가 있다면 평가 손익을 계산해 준다.
+            self.open_profit_loss = self.num_remain * (curr_price - self.remain_average_price) * self.symbol_seunsu
 
         # 포트폴리오 가치 갱신
-        self.portfolio_value = self.balance + curr_price * self.num_stocks
+        self.portfolio_value = self.balance + self.open_profit_loss
         # 현재 수익을 계산
         profitloss = (
             (self.portfolio_value - self.base_portfolio_value) / self.base_portfolio_value)
@@ -190,3 +219,4 @@ class Agent:
             delayed_reward = 0
          # 즉시 보상과 지연보상을 반환한다.
         return self.immediate_reward, delayed_reward
+
