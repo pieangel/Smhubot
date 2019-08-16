@@ -45,7 +45,7 @@ class Agent:
         # 잔고 평균가
         self.remain_average_price = 0.0
         # 제품 승수
-        self.symbol_seunsu = 0.0
+        self.symbol_seunsu = 1000.0
 
         # Agent 클래스의 상태
         self.ratio_hold = 0  # 주식 보유 비율
@@ -137,6 +137,8 @@ class Agent:
         self.immediate_reward = 0
         # 신뢰도를 가지고 매수할 단위를 판단
         trading_unit = self.decide_trading_unit(confidence)
+        # 이전 잔고를 임시 저장
+        old_remain = self.num_remain
         # 매수
         if action == Agent.ACTION_BUY:
             # 잔고가 있다면 일단 실현 손익을 먼저 계산한다.
@@ -153,10 +155,10 @@ class Agent:
                 # 잔고에 더해 준다.
                 self.num_remain += trading_unit
                 # 평균가를 다시 계산해 준다.
-                self.remain_average_price = (self.num_remain * self.remain_average_price + trading_unit * curr_price)\
+                self.remain_average_price = (old_remain * self.remain_average_price + trading_unit * curr_price)\
                     / self.num_remain
                 # 평가 손익을 다시 계산해 준다.
-                self.open_profit_loss = self.remain_average_price * (curr_price - self.remain_average_price) \
+                self.open_profit_loss = self.num_remain * (curr_price - self.remain_average_price) \
                     * self.symbol_seunsu
             else:
                 self.num_remain = trading_unit
@@ -179,10 +181,10 @@ class Agent:
                 # 잔고에 더해 준다.
                 self.num_remain += -1 * trading_unit
                 # 평균가를 다시 계산해 준다.
-                self.remain_average_price = (self.num_remain * self.remain_average_price + trading_unit * curr_price) \
+                self.remain_average_price = (old_remain * self.remain_average_price + trading_unit * curr_price) \
                     / self.num_remain
                 # 평가 손익을 다시 계산해 준다.
-                self.open_profit_loss = self.remain_average_price * (curr_price - self.remain_average_price)\
+                self.open_profit_loss = self.num_remain * (curr_price - self.remain_average_price)\
                     * self.symbol_seunsu
             else:
                 self.num_remain = -1 * trading_unit
