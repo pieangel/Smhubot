@@ -22,7 +22,7 @@ class PolicyLearner:
         # 차트 데이터
         self.chart_data = chart_data
         # 환경
-        self.environment = Environment(chart_data)  # 환경 객체
+        self.environment = Environment(stock_code, chart_data)  # 환경 객체
         # 에이전트 객체
         self.agent = Agent(self.environment,
                            min_trading_unit=min_trading_unit,
@@ -87,7 +87,7 @@ class PolicyLearner:
             loss = 0.
             # 반복 카운트
             itr_cnt = 0
-            # 성공한 횟수 카운트
+            # 수익이 발생한 횟수 카운트
             win_cnt = 0
             # 탐험 횟수 - 심층 신경망이 아닌 탐색에 의한 회수
             exploration_cnt = 0
@@ -152,7 +152,7 @@ class PolicyLearner:
                 # 포트폴리오 가치 저장
                 memory_pv.append(self.agent.portfolio_value)
                 # 주식 갯수 저장
-                memory_num_stocks.append(self.agent.num_stocks)
+                memory_num_stocks.append(self.agent.num_remain)
                 # 샘플값(입력값), 액션값, 보상값을 튜플로 만들어 저장
                 memory = [(
                     memory_sample[i],
@@ -226,7 +226,7 @@ class PolicyLearner:
                         "POS:%s\tNEG:%s\tLoss:%10.6f" % (
                             epoch_str, num_epoches, epsilon, exploration_cnt, itr_cnt,
                             self.agent.num_buy, self.agent.num_sell, self.agent.num_hold,
-                            self.agent.num_stocks,
+                            self.agent.num_remain,
                             locale.currency(self.agent.portfolio_value, grouping=True),
                             pos_learning_cnt, neg_learning_cnt, loss))
 
@@ -251,6 +251,7 @@ class PolicyLearner:
         for i, (sample, action, reward) in enumerate(
                 reversed(memory[-batch_size:])):
             # x[i] 에는 특징값 수만큼 값들이 3차원으로 구성되어 들어갑니다.
+            # 일단 2차원은 반드시 구성하고 데이터가 남을 경우 3차원을 구성하게 된다.
             x[i] = np.array(sample).reshape((-1, 1, self.num_features))
             # y[i, action]에는 액션을 취하면 1.0, 취하지 않았으면 0.5로 들어갑니다.
             # action 0이면 매수이므로 [1.0, 0.5]라고 들어가게 됩니다.

@@ -4,7 +4,8 @@ import settings
 import data_manager
 from policy_learner import PolicyLearner
 from market_manager import SmMarketManager
-
+import pandas as pd
+import numpy as np
 
 if __name__ == '__main__':
     stock_code = '005930'  # 삼성전자
@@ -25,11 +26,26 @@ if __name__ == '__main__':
     logging.basicConfig(format="%(message)s",
                         handlers=[file_handler, stream_handler], level=logging.DEBUG)
 
+    excel_file = os.path.join(settings.BASE_DIR, 'data/chart_data/future10y.xlsx')
     logging.debug('학습 시작')
-    # 주식 데이터 준비
+    xlsx = pd.ExcelFile(excel_file)
+    movies_sheets = []
+    for sheet in xlsx.sheet_names:
+        movies_sheets.append(xlsx.parse(sheet))
+
+    symbol = movies_sheets[10]
+    print(symbol)
+    if 'volume' in symbol:
+        symbol['volume'] = symbol['volume'].replace('-', np.nan)
+        symbol['volume'] = symbol['volume'].replace(r'[KM]+$', '', regex=True).astype(float) * \
+            symbol['volume'].astype(str).str.extract(r'[\d\.]+([KM]+)', expand=False).fillna(1)\
+            .replace(['K', 'M'], [10 ** 3, 10 ** 6]).astype(int)
+        symbol['volume'].fillna(method='ffill', inplace=True)
+        symbol['volume'].fillna(method='bfill', inplace=True)
+
+        # 주식 데이터 준비
     chart_data = data_manager.load_chart_data(
-        os.path.join(settings.BASE_DIR,
-                     'data/chart_data/{}.csv'.format(stock_code)))
+        os.path.join(settings.BASE_DIR, 'data/chart_data/wti.csv'))
     prep_data = data_manager.preprocess(chart_data)
     training_data = data_manager.build_training_data(prep_data)
 

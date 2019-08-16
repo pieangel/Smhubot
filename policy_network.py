@@ -42,6 +42,12 @@ class PolicyNetwork:
 
     # 샘플데이터에 대한 예상 - 확률을 반환한다.
     def predict(self, sample):
+        #temp = np.array(sample)
+        #temp2 = temp.reshape(1, -1, self.input_dim)
+        #temp3 = self.model.predict(temp2)
+        # 2차원 배열을 반납하므로 1차원 배열만 반납한다.
+        # predict는 3차원 배열을 입력값으로 받는다.
+        # 하나의 입력값일때는 3차원 형식을 잘 맞춰 줘야 한다.
         self.prob = self.model.predict(np.array(sample).reshape((1, -1, self.input_dim)))[0]
         return self.prob
 

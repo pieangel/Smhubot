@@ -115,6 +115,7 @@ class SmMarketManager:
                 symbol.name = symbol_name.strip()
                 symbol.name_kr = symbol_name_kr.strip()
                 symbol.market_name = product.market_name
+                product.contract_seunsu = symbol.contract_seunsu
                 product.add_symbol(symbol)
                 self.symmgr.add_symbol(symbol)
 

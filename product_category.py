@@ -7,6 +7,7 @@ class SmProduct:
         self.exchange_code = ""
         self.market_name = ""
         self.symbol_list = []
+        self.contract_seunsu = 0.0
 
     def add_symbol(self, symbol):
         self.symbol_list.append(symbol)
